@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>114年全國國小盃羽球錦標賽 - 代墊費用登記 (吉伊卡哇風)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts: Noto Sans TC & Rounded Mplus (for cute feel) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDKs (使用穩定版 10.13.2) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root {
+            --chiikawa-pink: #FFDBED;
+            --hachiware-blue: #C3E2F4;
+            --usagi-yellow: #FFFACD;
+            --text-dark: #5A4D4D;
+            --bg-pattern: #FFF9FC;
+        }
+
+        body {
+            font-family: 'M PLUS Rounded 1c', 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-pattern);
+            background-image: radial-gradient(var(--chiikawa-pink) 20%, transparent 20%),
+                              radial-gradient(var(--hachiware-blue) 20%, transparent 20%);
+            background-position: 0 0, 25px 25px;
+            background-size: 50px 50px;
+            color: var(--text-dark);
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .cute-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 8px 20px -6px rgba(255, 182, 193, 0.3);
+            border: 3px solid #FFF;
+            transition: transform 0.2s, box-shadow 0.2s;
+            backdrop-filter: blur(5px);
+        }
+        
+        .cute-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--chiikawa-pink);
+            box-shadow: 0 12px 24px -8px rgba(255, 182, 193, 0.5);
+        }
+
+        .stat-card-pink { border-bottom: 5px solid var(--chiikawa-pink); }
+        .stat-card-blue { border-bottom: 5px solid var(--hachiware-blue); }
+
+        .btn-primary {
+            background-color: #FF9EBC;
+            background-image: linear-gradient(to bottom right, #FF9EBC, #FF7DA4);
+            color: white;
+            border-radius: 20px;
+            transition: all 0.2s;
+            border: 2px solid white;
+            box-shadow: 0 4px 0 #FF6B96, 0 6px 6px rgba(0,0,0,0.1);
+        }
+
+        .btn-primary:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #FF6B96, inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .input-cute {
+            border: 2px solid #F0F0F0;
+            background: #FFFEFE;
+            border-radius: 16px;
+            padding: 12px;
+            transition: all 0.3s;
+            color: var(--text-dark);
+        }
+
+        .input-cute:focus {
+            outline: none;
+            border-color: #FF9EBC;
+            box-shadow: 0 0 0 4px rgba(255, 158, 188, 0.15);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            backdrop-filter: blur(5px);
+        }
+
+        /* Modal 動畫 */
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        body.modal-active {
+            overflow-x: hidden;
+            overflow-y: visible !important;
+        }
+
+        /* Toast Notification */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+        .toast {
+            background: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            animation: slideInDown 0.3s ease-out;
+            border: 2px solid;
+            min-width: 300px;
+            justify-content: center;
+        }
+        .toast.success { border-color: #4ADE80; color: #15803D; }
+        .toast.error { border-color: #F87171; color: #B91C1C; }
+
+        @keyframes slideInDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="pb-20">
+
+    <!-- Loading State -->
+    <div id="loading" class="loading-overlay">
+        <div class="text-center">
+            <i class="fa-solid fa-star fa-spin text-4xl text-yellow-400 mb-3"></i>
+            <p class="text-pink-400 font-bold text-lg">載入中耶...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Delete Confirmation Modal (取代 confirm()) -->
+    <div id="delete-modal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
+        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
+        
+        <div class="modal-container bg-white w-11/12 md:max-w-md mx-auto rounded-[30px] shadow-lg z-50 overflow-y-auto transform transition-all border-4 border-[#FFDBED]">
+            <div class="modal-content py-6 text-left px-6">
+                <!-- Title -->
+                <div class="flex justify-center items-center pb-3">
+                    <p class="text-2xl font-black text-[#5A4D4D]">真的要刪除嗎？</p>
+                </div>
+
+                <!-- Body -->
+                <div class="text-center mb-6">
+                    <p class="text-gray-500 font-bold text-sm">嗚...刪掉後就救不回來囉 (T_T)</p>
+                </div>
+
+                <!-- Footer -->
+                <div class="flex justify-center gap-4">
+                    <button id="cancel-delete" class="px-6 py-3 rounded-2xl bg-gray-100 text-gray-500 font-bold hover:bg-gray-200 focus:outline-none transition">
+                        取消
+                    </button>
+                    <button id="confirm-delete" class="px-6 py-3 rounded-2xl bg-red-400 text-white font-bold hover:bg-red-500 focus:outline-none shadow-md transition">
+                        殘忍刪除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="pt-10 pb-6 text-center relative">
+        <div class="container mx-auto px-4 relative z-10">
+            <h1 class="text-3xl font-black text-[#5A4D4D] mb-1 tracking-wide">114年全國國小盃</h1>
+            <div class="inline-block bg-white px-4 py-1 rounded-full border-2 border-pink-200 shadow-sm mt-1">
+                <h2 class="text-lg text-pink-500 font-bold">🏸 羽球錦標賽費用登記</h2>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 max-w-2xl">
+        
+        <!-- Dashboard Summary -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="cute-card p-4 text-center stat-card-pink">
+                <div class="text-pink-400 text-sm font-bold mb-1"><i class="fa-solid fa-coins mr-1"></i>總代墊金額</div>
+                <div class="text-2xl font-black text-[#5A4D4D]" id="total-amount">$0</div>
+            </div>
+            <div class="cute-card p-4 text-center stat-card-blue">
+                <div class="text-blue-400 text-sm font-bold mb-1"><i class="fa-solid fa-car-side mr-1"></i>總出車數量</div>
+                <div class="text-2xl font-black text-[#5A4D4D]" id="total-cars">0 台</div>
+            </div>
+        </div>
+
+        <!-- Input Form -->
+        <div class="cute-card p-6 mb-8 relative overflow-hidden">
+            <div class="absolute top-2 right-4 text-yellow-300 text-2xl opacity-50">✨</div>
+            <div class="absolute bottom-2 left-4 text-pink-300 text-xl opacity-50">♥</div>
+
+            <h3 class="text-lg font-bold text-[#5A4D4D] mb-4 flex items-center">
+                <span class="bg-pink-100 p-2 rounded-lg mr-2 text-pink-500"><i class="fa-solid fa-pen-nib"></i></span>
+                新增費用
+            </h3>
+            
+            <form id="expense-form" class="space-y-4">
+                
+                <div>
+                    <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">日期 <span class="text-pink-400">*</span></label>
+                    <input type="date" id="expense-date" required class="input-cute w-full text-gray-600 font-medium">
+                </div>
+
+                <div>
+                    <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">姓名 <span class="text-pink-400">*</span></label>
+                    <input type="text" id="name" required class="input-cute w-full" placeholder="請輸入家長或選手姓名">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">出車數量 (台)</label>
+                        <input type="number" id="cars" min="0" class="input-cute w-full" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">停車費 (元)</label>
+                        <input type="number" id="parking" min="0" class="input-cute w-full" placeholder="0">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">餐費 (元)</label>
+                    <input type="number" id="meals" min="0" class="input-cute w-full" placeholder="0">
+                </div>
+
+                <div>
+                    <label class="block text-gray-500 text-sm font-bold mb-1 ml-1">
+                        <i class="fa-regular fa-comment-dots mr-1"></i>備註
+                    </label>
+                    <input type="text" id="note" class="input-cute w-full" placeholder="例如：張爸爸開車 / 3人用餐 / 選手便當">
+                </div>
+
+                <button type="submit" class="btn-primary w-full py-3 font-bold text-lg mt-4 flex justify-center items-center group">
+                    <span class="group-hover:scale-110 transition-transform duration-200">哇！登記資料</span> 
+                    <i class="fa-solid fa-paw ml-2"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Data List -->
+        <div class="space-y-4">
+            <h3 class="text-lg font-bold text-[#5A4D4D] ml-2 flex items-center">
+                <i class="fa-solid fa-clipboard-list text-blue-300 mr-2"></i>已登記清單
+            </h3>
+            
+            <div id="expense-list" class="space-y-3">
+                <!-- Entries will be injected here -->
+            </div>
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden text-center py-10 opacity-60">
+                <div class="text-5xl mb-3">🌱</div>
+                <p class="text-gray-400 font-bold">目前還沒有資料耶...</p>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="text-center text-gray-400 text-sm py-10 font-bold opacity-60">
+        <p>114年全國國小盃羽球錦標賽後勤小組</p>
+        <p class="text-xs mt-1">Created with ❤️</p>
+    </footer>
+
+    <script>
+        // --- Configuration ---
+        const COLLECTION_NAME = 'badminton_expenses_114';
+        
+        let firebaseConfig;
+        let appId;
+
+        if (typeof __firebase_config !== 'undefined') {
+            firebaseConfig = JSON.parse(__firebase_config);
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        } else {
+            // Production Mode
+            // 這裡已經填入您的設定，請勿修改
+            firebaseConfig = { 
+                apiKey: "AIzaSyB8cWN3sNuAft7tP-4-LFObo6eZ6y1XeWs",
+                authDomain: "badminton-114.firebaseapp.com",
+                projectId: "badminton-114",
+                storageBucket: "badminton-114.firebasestorage.app",
+                messagingSenderId: "375632539964",
+                appId: "1:375632539964:web:5f9e9689588b5ac2cf2e39"
+            };
+            appId = 'default-app-id';
+        }
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
+
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // DOM Elements
+        const form = document.getElementById('expense-form');
+        const listContainer = document.getElementById('expense-list');
+        const emptyState = document.getElementById('empty-state');
+        const totalAmountEl = document.getElementById('total-amount');
+        const totalCarsEl = document.getElementById('total-cars');
+        const loadingEl = document.getElementById('loading');
+        const dateInput = document.getElementById('expense-date');
+        const toastContainer = document.getElementById('toast-container');
+        
+        // Modal Elements
+        const modal = document.getElementById('delete-modal');
+        const cancelDeleteBtn = document.getElementById('cancel-delete');
+        const confirmDeleteBtn = document.getElementById('confirm-delete');
+        let itemToDeleteId = null;
+
+        // Set default date
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+
+        let currentUser = null;
+        let expenses = [];
+
+        // --- Toast Function ---
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            const icon = type === 'success' ? '<i class="fa-solid fa-check-circle mr-2"></i>' : '<i class="fa-solid fa-circle-exclamation mr-2"></i>';
+            toast.innerHTML = `${icon} <span>${message}</span>`;
+            
+            toastContainer.appendChild(toast);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // --- Modal Functions ---
+        function openModal() {
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            document.body.classList.add('modal-active');
+        }
+
+        function closeModal() {
+            modal.classList.add('opacity-0', 'pointer-events-none');
+            document.body.classList.remove('modal-active');
+            itemToDeleteId = null;
+        }
+
+        // --- Auth ---
+        async function initApp() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                     await auth.signInWithCustomToken(__initial_auth_token);
+                } else {
+                     await auth.signInAnonymously();
+                }
+
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        currentUser = user;
+                        subscribeToData();
+                    }
+                });
+            } catch (error) {
+                console.error("Auth Error:", error);
+                
+                // 更友善的錯誤處理與提示
+                let msg = error.message;
+                if (error.code === 'auth/configuration-not-found' || error.code === 'auth/unauthorized-domain') {
+                    msg = "網域未授權！請到 Firebase Console -> Authentication -> Settings -> Authorized domains 新增您的 Netlify 網址。";
+                }
+                
+                showToast("登入錯誤: " + msg, "error");
+                loadingEl.style.display = 'none';
+            }
+        }
+
+        // --- Firestore ---
+        function subscribeToData() {
+            let dataCollection;
+            if (typeof __firebase_config !== 'undefined') {
+                dataCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(COLLECTION_NAME);
+            } else {
+                dataCollection = db.collection(COLLECTION_NAME);
+            }
+
+            dataCollection.onSnapshot((snapshot) => {
+                expenses = [];
+                snapshot.forEach(doc => {
+                    expenses.push({ id: doc.id, ...doc.data() });
+                });
+                expenses.sort((a, b) => b.timestamp - a.timestamp);
+                renderUI();
+                loadingEl.style.display = 'none';
+            }, (error) => {
+                console.error("Data fetch error:", error);
+                // 權限錯誤提示
+                if (error.code === 'permission-denied') {
+                    showToast("讀取失敗：權限不足 (請檢查 Firestore Rules)", "error");
+                } else {
+                    showToast("讀取資料失敗: " + error.message, "error");
+                }
+                loadingEl.style.display = 'none';
+            });
+        }
+
+        // --- Add ---
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            const date = document.getElementById('expense-date').value;
+            const name = document.getElementById('name').value.trim();
+            const cars = parseInt(document.getElementById('cars').value) || 0;
+            const parking = parseInt(document.getElementById('parking').value) || 0;
+            const meals = parseInt(document.getElementById('meals').value) || 0;
+            const note = document.getElementById('note').value.trim(); 
+
+            if (!name) {
+                showToast("請填寫姓名！", "error");
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+                return;
+            }
+            
+            // 檢查是否已登入
+            if (!currentUser) {
+                showToast("身分驗證尚未完成 (請確認網域授權)", "error");
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+                return;
+            }
+
+            try {
+                let dataCollection;
+                if (typeof __firebase_config !== 'undefined') {
+                    dataCollection = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(COLLECTION_NAME);
+                } else {
+                    dataCollection = db.collection(COLLECTION_NAME);
+                }
+                
+                await dataCollection.add({
+                    expenseDate: date,
+                    name: name,
+                    cars: cars,
+                    parking: parking,
+                    meals: meals,
+                    note: note,
+                    timestamp: Date.now(),
+                    creatorId: currentUser.uid
+                });
+
+                const currentVal = dateInput.value;
+                form.reset();
+                dateInput.value = currentVal;
+                showToast("新增成功！");
+                
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                // 顯示具體的錯誤原因
+                showToast("新增失敗: " + error.message, "error");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+            }
+        });
+
+        // --- Delete Logic ---
+        
+        // 1. Triggered by button click
+        window.confirmDelete = function(id) {
+            itemToDeleteId = id;
+            openModal();
+        }
+
+        // 2. Modal interactions
+        cancelDeleteBtn.addEventListener('click', closeModal);
+        
+        confirmDeleteBtn.addEventListener('click', async () => {
+            if (!itemToDeleteId) return;
+
+            // Change button state
+            const originalText = confirmDeleteBtn.innerText;
+            confirmDeleteBtn.innerText = "刪除中...";
+            confirmDeleteBtn.disabled = true;
+
+            try {
+                let docRef;
+                if (typeof __firebase_config !== 'undefined') {
+                    docRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection(COLLECTION_NAME).doc(itemToDeleteId);
+                } else {
+                    docRef = db.collection(COLLECTION_NAME).doc(itemToDeleteId);
+                }
+                
+                await docRef.delete();
+                showToast("已刪除資料");
+                closeModal();
+            } catch (error) {
+                console.error("Error removing document: ", error);
+                showToast("刪除失敗: " + error.message, "error");
+                closeModal();
+            } finally {
+                confirmDeleteBtn.innerText = originalText;
+                confirmDeleteBtn.disabled = false;
+            }
+        });
+
+        // Close modal if clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeModal();
+            }
+        });
+
+
+        // --- Rendering ---
+        function renderUI() {
+            let totalAmount = 0;
+            let totalCars = 0;
+
+            listContainer.innerHTML = '';
+
+            if (expenses.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                
+                expenses.forEach(item => {
+                    const subtotal = (item.parking || 0) + (item.meals || 0);
+                    totalAmount += subtotal;
+                    totalCars += (item.cars || 0);
+
+                    let displayDate = '無日期';
+                    if (item.expenseDate) {
+                        const dateParts = item.expenseDate.split('-');
+                        if (dateParts.length === 3) {
+                            displayDate = `${dateParts[1]}/${dateParts[2]}`;
+                        } else {
+                            displayDate = item.expenseDate;
+                        }
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = 'cute-card p-4 flex justify-between items-start relative group';
+                    
+                    const parkingText = item.parking > 0 ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full mr-1">停 $${item.parking}</span>` : '';
+                    const mealText = item.meals > 0 ? `<span class="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded-full mr-1">餐 $${item.meals}</span>` : '';
+                    const carText = item.cars > 0 ? `<span class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full">車 ${item.cars}</span>` : '';
+                    
+                    const noteHtml = item.note ? 
+                        `<div class="mt-2 text-xs text-gray-500 flex items-start bg-[#FFFACD] p-2 rounded-lg inline-block">
+                            <i class="fa-solid fa-note-sticky mr-1 mt-0.5 text-yellow-600"></i> ${item.note}
+                         </div>` : '';
+
+                    // [Modified] Button calls confirmDelete()
+                    card.innerHTML = `
+                        <div class="flex items-start w-full">
+                            <div class="flex-shrink-0 mr-3 text-center bg-pink-100 text-pink-500 rounded-xl px-2 py-2 shadow-sm">
+                                <span class="block text-xs font-bold opacity-70">DATE</span>
+                                <span class="block text-lg font-black leading-tight">${displayDate}</span>
+                            </div>
+
+                            <div class="flex-grow pt-1">
+                                <div class="font-bold text-[#5A4D4D] text-lg flex items-center flex-wrap">
+                                    ${item.name}
+                                    <span class="ml-2 text-sm font-bold text-white bg-pink-400 px-3 py-0.5 rounded-full shadow-sm">
+                                        $${subtotal}
+                                    </span>
+                                </div>
+                                <div class="mt-1 flex flex-wrap gap-1">
+                                    ${parkingText || mealText || carText ? (parkingText + mealText + carText) : '<span class="text-xs text-gray-400">無費用</span>'}
+                                </div>
+                                ${noteHtml}
+                            </div>
+
+                            <button onclick="confirmDelete('${item.id}')" class="relative z-10 text-gray-300 hover:text-red-400 transition-colors p-2 ml-2 mt-1 cursor-pointer">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    `;
+                    listContainer.appendChild(card);
+                });
+            }
+
+            animateValue(totalAmountEl, parseInt(totalAmountEl.innerText.replace(/[^0-9]/g, '')) || 0, totalAmount, '$');
+            animateValue(totalCarsEl, parseInt(totalCarsEl.innerText.replace(/[^0-9]/g, '')) || 0, totalCars, '', ' 台');
+        }
+
+        function animateValue(obj, start, end, prefix = '', suffix = '') {
+            if (start === end) return;
+            let startTimestamp = null;
+            const duration = 500;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                const value = Math.floor(progress * (end - start) + start);
+                obj.innerHTML = prefix + value.toLocaleString() + suffix;
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        initApp();
+    </script>
+</body>
+</html>
